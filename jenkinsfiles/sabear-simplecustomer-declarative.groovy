@@ -4,13 +4,13 @@ pipeline {
     agent { label 'built-in' }
 
     tools {
-        maven 'maven-3.9'
+        maven 'maven-3.10'
     }
 
     environment {
         SCANNER_HOME = tool 'sonar-scanner'
 
-        NEXUS_URL    = '172.31.47.39:8081'
+        NEXUS_URL    = '18.61.41.151:8081'
         NEXUS_REPO   = 'devops-repo'
 
         APP_GROUP    = 'com.javatpoint'
