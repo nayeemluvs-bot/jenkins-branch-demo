@@ -1,65 +1,101 @@
+// Change NEXUS_URL to your Nexus/SonarQube server IP if required
+
 pipeline {
-    agent any
+    agent { label 'built-in' }
+
+    tools {
+        maven 'maven-3.9'
+    }
 
     environment {
-        APP_NAME = 'simplecustomerapp'
-        SONAR_SERVER = 'SonarQube-102026'
-        NEXUS_URL = 'http://18.61.41.151:8081/repository/maven-releases/'
-        TOMCAT_URL = 'http://16.112.33.19:8080'
+        SCANNER_HOME = tool 'sonar-scanner'
+
+        NEXUS_URL    = '172.31.47.39:8081'
+        NEXUS_REPO   = 'devops-repo'
+
+        APP_GROUP    = 'com.javatpoint'
+        APP_ARTIFACT = 'SimpleCustomerApp'
+        APP_VERSION  = "${BUILD_NUMBER}-SNAPSHOT"
     }
 
     stages {
+
         stage('Git Clone') {
             steps {
-                checkout scm
-                sh 'git rev-parse --short HEAD'
+                git branch: 'feature-1.1',
+                    url: 'https://github.com/betawins/sabear_simplecutomerapp.git'
             }
         }
 
         stage('SonarQube Integration') {
             steps {
-                withSonarQubeEnv("${SONAR_SERVER}") {
-                    sh '''
-                        mvn -B sonar:sonar \
-                          -Dsonar.projectKey=simplecustomerapp \
-                          -Dsonar.projectName=simplecustomerapp
-                    '''
+                withSonarQubeEnv('sonarqube-server') {
+                    sh """
+                        ${SCANNER_HOME}/bin/sonar-scanner \
+                        -Dsonar.projectKey=sabear-declarative \
+                        -Dsonar.projectName=sabear-declarative \
+                        -Dsonar.projectVersion=1.0 \
+                        -Dsonar.sources=src \
+                        -Dsonar.java.binaries=. \
+                        -Dsonar.scanner.skipJreProvisioning=true
+                    """
                 }
             }
         }
 
         stage('Maven Compilation') {
             steps {
-                sh 'mvn -B clean package -DskipTests'
+                sh '''
+                    rm -rf src/main/webapp
+                    mkdir -p src/main
+                    cp -r WebContent src/main/webapp
+                '''
+
+                sh 'mvn -DBUILD_NUMBER=${BUILD_NUMBER} clean package'
             }
         }
 
         stage('Nexus Artifactory') {
             steps {
-                withCredentials([usernamePassword(
-                    credentialsId: 'nexus-creds',
-                    usernameVariable: 'NEXUS_USER',
-                    passwordVariable: 'NEXUS_PASS'
-                )]) {
-                    sh 'mvn -B deploy -DskipTests'
-                }
+                nexusArtifactUploader(
+                    nexusVersion: 'nexus3',
+                    protocol: 'http',
+                    nexusUrl: "${NEXUS_URL}",
+                    groupId: "${APP_GROUP}",
+                    version: "${APP_VERSION}",
+                    repository: "${NEXUS_REPO}",
+                    credentialsId: 'nexus-credentials',
+                    artifacts: [
+                        [
+                            artifactId: "${APP_ARTIFACT}",
+                            classifier: '',
+                            file: "target/${APP_ARTIFACT}-${APP_VERSION}.war",
+                            type: 'war'
+                        ]
+                    ]
+                )
             }
         }
 
         stage('Slack Notification') {
             steps {
                 slackSend(
-                    channel: '#jenkins-alerts',
+                    channel: '#jenkins-builds',
+                    tokenCredentialId: 'slack-token',
+                    botUser: true,
                     color: 'good',
-                    message: "SUCCESS ${env.JOB_NAME} #${env.BUILD_NUMBER} ${env.BUILD_URL}"
+                    message: "${env.JOB_NAME} #${env.BUILD_NUMBER} built and uploaded to Nexus: ${env.BUILD_URL}"
                 )
             }
         }
 
-        stage('Deploy on Tomcat') {
+        stage('Deploy On Tomcat') {
             steps {
-                sh 'echo "Deploy target: ${TOMCAT_URL}"'
-                // Put approved Tomcat deployment command/script here.
+                sh '''
+                    docker cp target/*.war tomcat:/usr/local/tomcat/webapps/simplecustomerapp.war
+                    sleep 15
+                    docker logs --tail 5 tomcat
+                '''
             }
         }
     }
@@ -67,9 +103,11 @@ pipeline {
     post {
         failure {
             slackSend(
-                channel: '#jenkins-alerts',
+                channel: '#jenkins-builds',
+                tokenCredentialId: 'slack-token',
+                botUser: true,
                 color: 'danger',
-                message: "FAILED ${env.JOB_NAME} #${env.BUILD_NUMBER} ${env.BUILD_URL}"
+                message: "${env.JOB_NAME} #${env.BUILD_NUMBER} FAILED: ${env.BUILD_URL}"
             )
         }
     }
