@@ -4,8 +4,8 @@ pipeline {
     environment {
         APP_NAME = 'simplecustomerapp'
         SONAR_SERVER = 'SonarQube-102026'
-        NEXUS_URL = 'http://<NEXUS-IP>:8081/repository/maven-releases/'
-        TOMCAT_URL = 'http://<TOMCAT-IP>:8080'
+        NEXUS_URL = 'http://18.61.41.151:8081/repository/maven-releases/'
+        TOMCAT_URL = 'http://16.112.33.19:8080'
     }
 
     stages {
